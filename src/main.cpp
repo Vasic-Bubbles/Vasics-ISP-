@@ -340,3 +340,6 @@ int main() {
     wait(100, msec);
   }
 }
+
+// Test if this appears it means git and the repository work and are connected
+
