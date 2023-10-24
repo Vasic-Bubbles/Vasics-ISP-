@@ -104,9 +104,6 @@ int adjust_turn = 0; // Will turn a specified constant
 double CenterFOV = 157; // Center of pixels
 int CenterGreen = 0;
 int Targetarea = 53172; // Area which robot should stop at
-double Ki = 0;
-double Kp = 0;
-double Kd = 0;
 
 int Realarea = 0;
 
@@ -116,10 +113,98 @@ double Acons = 2804;
 double distance_temp = 0;
 double distance_p = 0; //Distance conversion from area of pixels into distance in cm
 double target_distance = 10;
-double error_turn = 0;
 double adjust_kp = 0;
 
-void autoadjust() {
+
+// ----------------------------------------------------------------------------------------------------------------------------------
+// PID Class
+
+class PID //This class will contain all information and calculations of my PIDs
+{
+  private:
+
+  double last_error = 0 ;
+  double Kp ;
+  double Ki ;
+  double Kd ;
+  double Integral = 0;
+
+
+  public: 
+  
+  PID(double kp, double ki, double kd) : last_error(0), Kp(kp), Ki(ki), Kd(kd), Integral(0) {} //Constructor
+
+  double Regular_PID(double Target, double Current) { //Regular PID calculations, if special will use another function
+    double error = Target - Current ;
+  
+    double Proportional = error * Kp ;
+    Integral = Integral + (error * Ki) ;
+    double Derivative = Kd * (error - last_error) ;
+
+
+    last_error = error ;
+
+    double Control_PID = Proportional + Integral + Derivative ;
+
+    return Control_PID ;
+  }
+
+  class Distance_Control 
+  {
+
+    private:
+
+    double ConstantA ;
+    double ConstantB ;
+    double (*func)(double, double, double);
+
+
+    
+    public:
+
+    Distance_Control(double(*func)(double, double, double), double ConsA, double ConsB) : ConstantA(ConsA), ConstantB(ConsB) {} //I dont even know why I am making this, it isn't even necessary
+
+    double Distance_Mul(double Current_Pos) {
+    
+      double Constant_Mul = func(ConstantA, ConstantB, Current_Pos) ;
+
+      return Constant_Mul ;
+    }
+
+  };
+
+};
+
+//PID CLASS 
+// --------------------------------------------------------------------------------------------------------
+
+
+
+// -------------------------------------------------------------------------------------------------------------------
+// Math Functions
+
+double Linear(double slope, double offset, double var) {
+  double Linear_val = (var*slope) + offset;
+
+  return Linear_val ;
+}
+
+double Power(double mul_A, double pow_b, double var) {
+    double Power_val = pow(var, pow_b) * mul_A ;
+
+    return Power_val ;
+}
+
+
+// Might add more later on 
+// -----------------------------------------------------------------------------------------------------------------------------
+
+
+
+// -------------------------------------------------------------------------------------------------------------------------
+// Vision Sensor Adjust
+
+void Visionadjust() {
   StartDirect.takeSnapshot(StartDirect__GREENT);
   hgreen = StartDirect.objects[0].height;
   wgreen = StartDirect.objects[0].width;
@@ -128,43 +213,18 @@ void autoadjust() {
   CenterGreen = StartDirect.objects[0].centerX;
 
   powe = 100 ; // Full power which will be subtracted based on  the adjust
-  // Brute force constant, this is the minimum the robot will adjust if it has to turn
-  // Kp will change depending on how well it is working (It is also not really Kp just a constant)
 
   distance_temp = pow(Realarea, Bcons) ;
   distance_p = distance_temp*Acons ; // Distance in centimeters from area Realarea
-  error_turn = 157 - CenterGreen ;
-  
-  
 
-  // Alright so the main problem is I want to combine advancing and turning
-  // For this I need to calculate the change in each motor
-  // Luckily its more like calculating the change in 2 motors since sides can be grouped
-  // First I will make a function that makes the more move by degrees
-  // Then I can use a PID or something to calculate the movements
-  // How do I make the PID? 
-  // Let us think about this like having a target
-  // We have to aim for the object to be in the center of our robot
-  // We also have to aim for the object being as close as possible
 
-  // Our targets will be 157 for the turn and 53172 for distance
+  PID Vision_Values(3, 2, 0.2) ; // Kp, Ki, Kd values
 
-  // So we will have speed x for both motors minus a correction which will adjust everything
+  PID::Distance_Control Regulator(Power, 33.06, -0.9204) ; //Use logger pro to get according function
 
-  // Our distance target will serve as a stopper and will be used to help the robot steer
-  // Think about it this way, if we are very close to the object and its to the side
-  // We want to do a sharp turn
-  // But if we are far away we could do a steering method by using a proportional calculation
-  // The farther we are the less we have to turn 
-  // The closer we are the more we have to turn 
-  // The problem with this is that if we use an exponential turning function
-  // We might not turn enough in the beginning and lose sight of our object
-  // For this reason our steer always has to be constant (mostly)
-  // This way it does not do a dangerous sharp turn at the end when it is near the object
-  // Basically we will have an already set turn which is the adjust's minimum
-  // That way we can always turn before we reach it
-  // We will call this minimum kp
-
+  // So this is a basic PID, the problem is we have to mix it with our distance target
+  // I am thinking of changing Kp Ki and Kd depending on our distance to our object
+  //Or better yet, lets just multiply the adjust depending on the distance, the closer it is the stronger the adjust is
 
 
   // Also if we stop seeing the object we will just stop and then I will programm a back up plan
@@ -172,15 +232,20 @@ void autoadjust() {
 
   if (StartDirect.objects[0].exists) {
     if (distance_p > target_distance) {
-      // Alright now it will move until it will repeat the code until it hits the object
-      // Unfortunately, it does not really have a sense of direction yet
-      fullpower(powe - Ki, powe - Ki); //Ki is temporary just to have something there
+      
+      double adjust = Vision_Values.Regular_PID(CenterFOV, CenterGreen) ;
+      double mul_dis = Regulator.Distance_Mul(distance_p);
+      
+      fullpower(powe + (adjust*mul_dis), powe - (adjust*mul_dis)); // Takes the adjust and adds it to B (since its negative), subtracts to C (Its positive)
+      //The mul_dis multiplies a constant that should increase the adjust the closer the robot it to the object
 
 
     }
   }
 
 }
+// Vision Sensor Adjust
+// -------------------------------------------------------------------------------------------------------------------------------------------------------
 
 
 
@@ -251,6 +316,8 @@ void autonomous(void) {
   L2.stop();
   R1.stop();
   R2.stop();
+
+  Visionadjust() ;
 
   forwardstime(1000);
 
@@ -341,6 +408,3 @@ int main() {
   }
 }
 
-// Test if this appears it means git and the repository work and are connected
-
-// Codigo para mostrar que funciona
