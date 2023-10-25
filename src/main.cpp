@@ -149,7 +149,7 @@ class PID //This class will contain all information and calculations of my PIDs
     return Control_PID ;
   }
 
-  class Distance_Control 
+  class Distance_Control // I will probably not use this class again, but its so general that I just have to make it like this
   {
 
     private:
