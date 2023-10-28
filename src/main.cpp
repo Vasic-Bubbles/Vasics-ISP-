@@ -135,7 +135,7 @@ class PID //This class will contain all information and calculations of my PIDs
   PID(double kp, double ki, double kd) : last_error(0), Kp(kp), Ki(ki), Kd(kd), Integral(0) {} //Constructor
 
   double Regular_PID(double Target, double Current) { //Regular PID calculations, if special will use another function
-    double error = Target - Current ;
+    double error = Target - Current ; // REMINDER: ADD OFFSET DUE TO ROBOT INNACURACIES IN PLACEMENT OF VISION SENSOR
   
     double Proportional = error * Kp ;
     Integral = Integral + (error * Ki) ;
